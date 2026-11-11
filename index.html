@@ -138,6 +138,7 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
 #lb-records .lb-cup-heading h2 { margin-top:5px; }
 #lb-records .lb-cup-intro { margin-top:-7px; }
 #lb-records .lb-empty { color:var(--muted); padding:24px 12px; background:#f8fafc; border-radius:8px; font-size:13px; }
+#lb-records .lb-empty .lb-back { margin-top:8px; }
 #lb-records .lb-table-scroll { overflow-x:auto; }
 #lb-records .lb-league { width:100%; border-collapse:collapse; text-align:left; background:white; font-size:13px; }
 #lb-records .lb-league th,#lb-records .lb-league td { padding:13px 10px; border-bottom:1px solid var(--line); }
@@ -153,8 +154,12 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
 #lb-records .lb-share { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 #lb-records .lb-share input { flex-basis:100%; min-width:0; }
 #lb-records .lb-season-content { min-width:0; }
-#lb-records .lb-schedule-cup { margin-top:14px; }
-#lb-records .lb-schedule-games { list-style:none; margin:0; padding:16px; display:grid; gap:12px; }
+#lb-records .lb-team-schedule { display:grid; gap:12px; min-width:0; }
+#lb-records .lb-schedule-cup { padding:12px; border:1px solid var(--line); border-radius:10px; min-width:0; }
+#lb-records .lb-schedule-cup h4 { margin:0; font-size:14px; overflow-wrap:anywhere; }
+#lb-records .lb-schedule-games { list-style:none; margin:8px 0 0; padding:0; display:grid; gap:8px; }
+#lb-records .lb-schedule-followups { margin-top:8px; }
+#lb-records .lb-schedule-followups > summary { color:var(--green); cursor:pointer; font-size:13px; font-weight:600; }
 #lb-records .lb-schedule-game { padding:13px; background:#f8fafc; border:1px solid var(--line); border-left:3px solid var(--green); border-radius:8px; }
 #lb-records .lb-schedule-game strong { font-size:14px; font-variant-numeric:tabular-nums; }
 #lb-records .lb-schedule-game p { margin-top:5px; overflow-wrap:anywhere; }
@@ -269,7 +274,7 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
     a.name.localeCompare(b.name,"ko"));
   const initialState = {
     view:"teams", teamKey:teams[0]?.key,
-    teamQuery:"", teamPage:0, teamYear:null, teamAge:ages[0], seasonTab:"tournaments",
+    teamQuery:"", teamPage:0, teamYear:null, teamAge:ages[0], teamTab:"records", seasonTab:"tournaments", scheduleOrder:"date",
     cupAge:ages[0], year:null, cupId:null, cupTab:"standings", cupTeamId:null, cupGroup:"", cupRound:"", leagueGroup:""
   };
   const state = {...initialState};
@@ -321,58 +326,105 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
     return link;
   }
 
-  function scheduledRecords(entries) {
-    if (!entries.length) return [el("p","등록된 대회 일정이 아직 없습니다.","lb-empty")];
-    const note = el("p","제공된 대진표 기준입니다. ‘진출 시’ 일정은 이전 경기에서 진출할 경우의 예정 일정입니다.","lb-muted");
-    const cards = entries.map((entry,index) => {
-      const cup = entry.cup;
-      const card = el("details",undefined,"lb-entry lb-schedule-cup");
-      card.open = index === 0;
-      const heading = el("summary");
-      heading.append(el("strong",cup.tournament.name),
-        el("small",cup.tournament.startDate.replaceAll("-",".") + " ~ " + cup.tournament.endDate.replaceAll("-","."),"lb-muted"));
-      const games = el("ol",undefined,"lb-schedule-games");
-      for (const match of [...entry.games].sort((a,b) =>
-        a.scheduledDate.localeCompare(b.scheduledDate) || a.scheduledTime.localeCompare(b.scheduledTime))) {
-        const sideTeams = side => side.team ? [side.team] : cup.matchesById.get(side.from).eligibleTeamIds;
-        const ownSide = match.sides.findIndex(side => sideTeams(side).includes(entry.team.id));
-        const opponent = sideTeams(match.sides[1-ownSide]);
-        const opponentLine = el("p","vs ");
-        let candidates;
-        if (opponent.length <= 3) {
-          opponent.forEach((id,index) => {
-            if (index) opponentLine.append(" · ");
-            opponentLine.append(teamRecordLink(cup,id));
-          });
-          if (opponent.length > 1) opponentLine.append(" 중 진출팀");
-        } else {
-          opponentLine.append("상대 미정 · 이전 경기 진출팀");
-          candidates = el("details",undefined,"lb-candidates");
-          const list = el("ul");
-          const ordered = [...opponent].sort((a,b) =>
-            Number(cup.teamKeys[b] === favoriteTeamKey) - Number(cup.teamKeys[a] === favoriteTeamKey) || nameFor(cup,a).localeCompare(nameFor(cup,b),"ko"));
-          for (const id of ordered) {
-            const item = el("li");
-            item.append(teamRecordLink(cup,id));
-            list.append(item);
-          }
-          candidates.append(el("summary","후보 팀 보기 (" + opponent.length + "팀)"),list);
-        }
-        const firstGame = match.sides.some(side => side.team === entry.team.id);
-        const row = el("li",undefined,"lb-schedule-game");
-        const line = el("div",undefined,"lb-line");
-        const weekday = "일월화수목금토"[new Date(match.scheduledDate + "T12:00:00").getDay()];
-        line.append(el("strong",match.scheduledDate.replaceAll("-",".") + "(" + weekday + ") " + match.scheduledTime),
-          el("span",firstGame ? "첫 경기" : "진출 시","lb-chip"));
-        const dugout = match.dugouts?.[entry.team.id];
-        row.append(line,el("p",match.stage + " · " + match.venue + (dugout ? " · " + dugout : ""),"lb-muted"),opponentLine);
-        if (candidates) row.append(candidates);
-        games.append(row);
+  function scheduledGame(entry,match) {
+    const cup = entry.cup;
+    const sideTeams = side => side.team ? [side.team] : cup.matchesById.get(side.from).eligibleTeamIds;
+    const ownSide = match.sides.findIndex(side => sideTeams(side).includes(entry.team.id));
+    const opponent = sideTeams(match.sides[1-ownSide]);
+    const opponentLine = el("p","vs ");
+    let candidates;
+    if (opponent.length <= 3) {
+      opponent.forEach((id,index) => {
+        if (index) opponentLine.append(" · ");
+        opponentLine.append(teamRecordLink(cup,id));
+      });
+      if (opponent.length > 1) opponentLine.append(" 중 진출팀");
+    } else {
+      opponentLine.append("상대 미정 · 이전 경기 진출팀");
+      candidates = el("details",undefined,"lb-candidates");
+      const list = el("ul");
+      const ordered = [...opponent].sort((a,b) =>
+        Number(cup.teamKeys[b] === favoriteTeamKey) - Number(cup.teamKeys[a] === favoriteTeamKey) || nameFor(cup,a).localeCompare(nameFor(cup,b),"ko"));
+      for (const id of ordered) {
+        const item = el("li");
+        item.append(teamRecordLink(cup,id));
+        list.append(item);
       }
-      card.append(heading,games);
-      return card;
-    });
-    return [note,...cards];
+      candidates.append(el("summary","후보 팀 보기 (" + opponent.length + "팀)"),list);
+    }
+    const firstGame = match.sides.some(side => side.team === entry.team.id);
+    const row = el("li",undefined,"lb-schedule-game");
+    const line = el("div",undefined,"lb-line");
+    const weekday = "일월화수목금토"[new Date(match.scheduledDate + "T12:00:00").getDay()];
+    line.append(el("strong",match.scheduledDate.replaceAll("-",".") + "(" + weekday + ") " + match.scheduledTime),
+      el("span",firstGame ? "첫 경기" : "진출 시","lb-chip"));
+    const dugout = match.dugouts?.[entry.team.id];
+    row.append(line,el("p",match.stage + " · " + match.venue + (dugout ? " · " + dugout : ""),"lb-muted"),opponentLine);
+    if (candidates) row.append(candidates);
+    return row;
+  }
+
+  function scheduledRecords(entries) {
+    const section = el("section",undefined,"lb-team-schedule");
+    section.setAttribute("aria-label","대회 일정");
+    const heading = el("div",undefined,"lb-line");
+    heading.append(el("h3","대회 일정"));
+    section.append(heading);
+    const byTime = (a,b) => a.scheduledDate.localeCompare(b.scheduledDate) || a.scheduledTime.localeCompare(b.scheduledTime);
+    const cards = [];
+    for (const entry of entries) {
+      const {tournament} = entry.cup;
+      const matches = [...entry.games].sort(byTime);
+      if (!matches.length) continue;
+      const direct = matches.filter(match => match.sides.some(side => side.team === entry.team.id));
+      const followups = matches.filter(match => !direct.includes(match));
+      const card = el("article",undefined,"lb-schedule-cup");
+      const title = el("div",undefined,"lb-line");
+      title.append(el("h4",tournament.name),el("span",tournament.ageGroup,"lb-chip"));
+      card.append(title);
+      const games = el("ol",undefined,"lb-schedule-games");
+      games.append(...direct.map(match => scheduledGame(entry,match)));
+      card.append(games);
+      if (followups.length) {
+        const panel = el("details",undefined,"lb-schedule-followups");
+        const later = el("ol",undefined,"lb-schedule-games");
+        later.append(...followups.map(match => scheduledGame(entry,match)));
+        panel.append(el("summary","진출 시 일정 보기 (" + followups.length + "경기)"),later);
+        card.append(panel);
+      }
+      cards.push({card,age:tournament.ageGroup,first:direct[0] || matches[0]});
+    }
+    if (!cards.length) {
+      section.append(el("p","등록된 대회 일정이 아직 없습니다.","lb-muted"));
+      return section;
+    }
+    const list = el("div",undefined,"lb-stack");
+    if (cards.length > 1) {
+      const label = el("label","일정 정렬 ","lb-label");
+      const picker = el("select");
+      for (const [value,name] of [["date","가까운 경기순"],["age","연령대순"]]) {
+        const option = el("option",name);
+        option.value = value;
+        picker.append(option);
+      }
+      picker.value = state.scheduleOrder;
+      picker.addEventListener("change",() => {
+        state.scheduleOrder = picker.value;
+        showOrder();
+        saveRoute();
+      });
+      label.append(picker);
+      heading.append(label);
+    }
+    section.append(list);
+    showOrder();
+    return section;
+
+    function showOrder() {
+      const ordered = [...cards].sort((a,b) =>
+        (state.scheduleOrder === "age" ? ages.indexOf(a.age) - ages.indexOf(b.age) : 0) || byTime(a.first,b.first));
+      list.append(...ordered.map(item => item.card));
+    }
   }
 
   function focusMobileDetail(detail) {
@@ -612,6 +664,7 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
       onSearch:value => { state.teamQuery = value; saveRoute(true); },onPage:value => { state.teamPage = value; saveRoute(true); },
       choose:key => {
         state.teamKey = key;
+        state.teamTab = "records";
         if (mobileLayout.matches) left.open = false;
         showTeam();
         saveRoute();
@@ -639,6 +692,7 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
       if (!years.includes(state.teamYear)) state.teamYear = years[0];
       const yearLabel = el("label","시즌 선택 ","lb-label");
       const yearPicker = el("select");
+      yearPicker.id = "lb-team-year";
       for (const year of years) {
         const option = el("option",year + " 시즌");
         option.value = year;
@@ -648,25 +702,44 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
       yearPicker.addEventListener("change",() => {
         state.teamYear = Number(yearPicker.value);
         showTeam();
-        detail.querySelector("select").focus({preventScroll:true});
+        detail.querySelector("#lb-team-year").focus({preventScroll:true});
         saveRoute();
       });
       yearLabel.append(yearPicker);
-      heading.append(yearLabel,shareControl());
-      detail.replaceChildren(heading,season(state.teamYear,
+      heading.append(shareControl());
+      const records = el("div",undefined,"lb-stack");
+      const schedules = scheduledRecords(team.scheduledEntries);
+      const scheduledCount = team.scheduledEntries.filter(entry => entry.games.length).length;
+      const scheduleLabel = scheduledCount ? "대회 일정 · " + scheduledCount + "개 대회" : "대회 일정";
+      const tabs = controls("팀 기록 보기",[["records","시즌 기록"],["schedules",scheduleLabel]],state.teamTab,showTeamTab);
+      const scheduleTab = tabs.lastElementChild;
+      const openSchedule = scheduledCount ? () => {
+        scheduleTab.click();
+        scheduleTab.focus();
+      } : null;
+      records.append(season(state.teamYear,
         team.entries.filter(entry => entry.cup.tournament.year === state.teamYear),
-        team.scheduledEntries.filter(entry => entry.cup.tournament.year === state.teamYear)),
+        yearLabel,openSchedule),
         el("p","경기 수·승패·득실점은 점수가 있는 경기 기준이며, 승률은 무승부를 제외해 계산합니다.","lb-muted"));
+      detail.replaceChildren(heading,tabs,records,schedules);
+      showTeamTab(state.teamTab);
+
+      function showTeamTab(tab) {
+        state.teamTab = tab;
+        records.hidden = tab !== "records";
+        schedules.hidden = tab !== "schedules";
+        saveRoute();
+      }
     }
     showTeam();
   }
 
-  function season(year, entries, scheduledEntries) {
+  function season(year, entries, yearLabel, openSchedule) {
     const section = el("section",undefined,"lb-year-summary");
     section.dataset.year = year;
     const header = el("div",undefined,"lb-season-header");
     const body = el("div",undefined,"lb-stack");
-    header.append(el("h3",year + " 시즌 성적"),
+    header.append(el("h3",year + " 시즌 성적"),yearLabel,
       controls("팀 연령대",ageChoices,state.teamAge,showAge));
     section.append(header,body);
     showAge(state.teamAge);
@@ -674,11 +747,13 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
     function showAge(age) {
       state.teamAge = age;
       const matching = entries.filter(entry => ageLabel(entry) === age);
-      const schedules = scheduledEntries.filter(entry => ageLabel(entry) === age);
       header.querySelector("h3").textContent = year + (matching.length ? " 시즌 성적" : " 시즌 기록");
       body.dataset.age = age;
-      if (!matching.length && !schedules.length) {
-        body.replaceChildren(el("p",year + "년 " + age + " 대회 기록이 아직 없습니다.","lb-empty"));
+      if (!matching.length) {
+        const empty = el("div",undefined,"lb-empty");
+        empty.append(el("p",year + "년 " + age + " 경기 결과가 아직 등록되지 않았습니다."));
+        if (openSchedule) empty.append(button("대회 일정 보기",openSchedule,"lb-back"));
+        body.replaceChildren(empty);
         saveRoute();
         return;
       }
@@ -713,16 +788,13 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
         list.append(item);
       });
       const content = el("div",undefined,"lb-season-content");
-      if (!matching.length && state.seasonTab === "tournaments") state.seasonTab = "schedules";
-      const tabs = controls("시즌 기록",[["tournaments","대회별 기록"],["players","수훈선수 모아보기"],["schedules","대회 일정"]],state.seasonTab,showSeasonTab);
-      const summaryContent = matching.length ? [metrics,note] : [el("p","등록된 경기 결과가 아직 없습니다.","lb-muted")];
-      body.replaceChildren(...summaryContent,tabs,content);
+      const tabs = controls("시즌 기록",[["tournaments","대회별 기록"],["players","수훈선수 모아보기"]],state.seasonTab,showSeasonTab);
+      body.replaceChildren(metrics,note,tabs,content);
       function showSeasonTab(tab) {
         state.seasonTab = tab;
         if (tab === "players") {
           content.replaceChildren(el("p","결과지에 수훈 기록이 있는 경기 기준입니다.","lb-muted"),...highlights(matching,true));
-        } else if (tab === "schedules") content.replaceChildren(...scheduledRecords(schedules));
-        else content.replaceChildren(...(matching.length ? [list] : [el("p","등록된 대회 결과가 아직 없습니다.","lb-empty")]));
+        } else content.replaceChildren(list);
         saveRoute();
       }
       showSeasonTab(state.seasonTab);
@@ -922,7 +994,9 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
       params.set("team",state.teamKey || "");
       if (state.teamYear) params.set("year",state.teamYear);
       params.set("age",state.teamAge);
+      if (state.teamTab === "schedules") params.set("tab","schedules");
       if (state.seasonTab !== "tournaments") params.set("section",state.seasonTab);
+      if (state.scheduleOrder === "age") params.set("scheduleOrder","age");
       if (state.teamQuery) params.set("q",state.teamQuery);
       if (state.teamPage) params.set("page",state.teamPage);
     } else {
@@ -952,7 +1026,9 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
       state.teamKey = teamIndex.has(params.get("team")) ? params.get("team") : teams[0]?.key;
       state.teamYear = year || null;
       state.teamAge = age;
-      state.seasonTab = ["players","schedules"].includes(params.get("section")) ? params.get("section") : "tournaments";
+      state.teamTab = params.get("tab") === "schedules" || params.get("section") === "schedules" ? "schedules" : "records";
+      state.seasonTab = params.get("section") === "players" ? "players" : "tournaments";
+      state.scheduleOrder = params.get("scheduleOrder") === "age" ? "age" : "date";
       state.teamQuery = params.get("q") || "";
       const pageNumber = Number(params.get("page"));
       state.teamPage = Number.isSafeInteger(pageNumber) && pageNumber > 0 ? pageNumber : 0;
