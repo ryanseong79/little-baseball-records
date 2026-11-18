@@ -10,16 +10,17 @@
 <body>
 <div id="lb-records" lang="ko">
   <header class="lb-header">
-    <a class="lb-brand-lockup" href="#view=teams" data-home aria-label="리틀야구 기록실 홈">
+    <a class="lb-brand-lockup" href="#view=home" data-home aria-label="리틀야구 기록실 홈">
       <span class="lb-brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="white" stroke-width="1.5"/><path d="M8 7c7 5 7 13 0 18M24 7c-7 5-7 13 0 18" stroke="#8dd9bb" stroke-width="1.5" stroke-dasharray="2.5 2"/></svg></span>
       <div><span class="lb-brand">LITTLE BASEBALL RECORDS</span><h1>리틀야구 기록실</h1></div>
     </a>
     <span class="lb-header-tag"><strong>시즌별 팀 성적과 경기 기록</strong>U-12 · U-10 대회 성적과 수훈선수</span>
   </header>
   <nav class="lb-nav" aria-label="기록 탐색">
-    <button type="button" data-home>홈</button>
-    <button type="button" data-view="teams" aria-pressed="true">팀 기록</button>
-    <button type="button" data-view="cups" aria-pressed="false">대회 기록</button>
+    <button type="button" data-view="home" aria-pressed="true">홈</button>
+    <button type="button" data-view="teams" aria-pressed="false">팀</button>
+    <button type="button" data-view="cups" aria-pressed="false">대회기록</button>
+    <button type="button" data-view="settings" aria-pressed="false">설정</button>
   </nav>
   <main id="lb-page"></main>
   <footer class="lb-footer"><span>리틀야구 기록실</span><span>대회 결과지에 기록된 팀 성적과 수훈선수의 활약을 모았습니다.</span></footer>
@@ -160,6 +161,11 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
 #lb-records .lb-share input { flex-basis:100%; min-width:0; }
 #lb-records .lb-season-content { min-width:0; }
 #lb-records .lb-team-schedule { display:grid; gap:12px; min-width:0; }
+#lb-records .lb-settings { max-width:680px; margin:0 auto; }
+#lb-records .lb-favorite-summary { padding:18px; border:1px solid var(--line); border-radius:12px; background:#f8fafc; }
+#lb-records .lb-favorite-summary strong { display:block; margin-top:4px; font-size:21px; }
+#lb-records .lb-settings-actions { display:flex; flex-wrap:wrap; gap:8px; }
+#lb-records .lb-settings-select { width:100%; margin-top:7px; }
 #lb-records .lb-schedule-cup { padding:12px; border:1px solid var(--line); border-radius:10px; min-width:0; }
 #lb-records .lb-schedule-cup h4 { margin:0; font-size:14px; overflow-wrap:anywhere; }
 #lb-records .lb-schedule-games { list-style:none; margin:8px 0 0; padding:0; display:grid; gap:8px; }
@@ -187,7 +193,8 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
   #lb-records .lb-header { padding:24px 20px; }
   #lb-records .lb-brand-lockup { gap:12px; }
   #lb-records .lb-header-tag { display:none; }
-  #lb-records .lb-nav { padding:0 20px; gap:26px; }
+  #lb-records .lb-nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); padding:0 8px; gap:0; }
+  #lb-records .lb-nav button { min-width:0; padding:14px 2px 11px; font-size:12px; white-space:nowrap; }
   #lb-records #lb-page { padding:20px 14px 30px; }
   #lb-records .lb-columns { grid-template-columns:minmax(0,1fr); gap:20px; }
   #lb-records .lb-sidebar { position:static; }
@@ -250,7 +257,9 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
   const displayTeamNames = scheduleData.teamNames;
   const rostersByTeam = rosterData.teams || {};
   const teamIndex = new Map();
-  const favoriteTeamKey = "team-0095";
+  const defaultFavoriteTeamKey = "team-0095";
+  const favoriteStorageKey = "little-baseball.favorite-team";
+  let favoriteTeamKey = defaultFavoriteTeamKey;
   const mobileLayout = matchMedia("(max-width:760px)");
   const stageRank = ["결승","준결승","8강","16강","32강","32강 진출전","64강","64강 진출전"];
   for (const cup of cups) {
@@ -296,17 +305,43 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
     }
     club.scheduledEntries.sort((a,b) => a.cup.tournament.startDate.localeCompare(b.cup.tournament.startDate));
   }
+  favoriteTeamKey = readFavoriteTeamKey();
   const newest = (a,b) => b.cup.tournament.year - a.cup.tournament.year || (b.games[0]?.result.date || "").localeCompare(a.games[0]?.result.date || "");
   const teams = [...teamIndex.values()];
   for (const team of teams) team.entries.sort(newest);
-  teams.sort((a,b) => Number(b.key === favoriteTeamKey) - Number(a.key === favoriteTeamKey) ||
-    a.name.localeCompare(b.name,"ko"));
+  sortTeamsByFavorite();
   const initialState = {
-    view:"teams", teamKey:teams[0]?.key,
+    view:"home", teamKey:favoriteTeamKey,
     teamQuery:"", teamPage:0, teamYear:null, teamAge:ages[0], teamTab:"records", seasonTab:"tournaments", scheduleOrder:"date",
     cupAge:ages[0], year:null, cupId:null, cupTab:"standings", cupTeamId:null, cupGroup:"", cupRound:"", leagueGroup:""
   };
   const state = {...initialState};
+
+  function readFavoriteTeamKey() {
+    try {
+      const saved = localStorage.getItem(favoriteStorageKey);
+      if (saved && teamIndex.has(saved)) return saved;
+      if (saved) localStorage.removeItem(favoriteStorageKey);
+    } catch {}
+    return teamIndex.has(defaultFavoriteTeamKey) ? defaultFavoriteTeamKey : teamIndex.keys().next().value;
+  }
+
+  function sortTeamsByFavorite() {
+    teams.sort((a,b) => Number(b.key === favoriteTeamKey) - Number(a.key === favoriteTeamKey) ||
+      a.name.localeCompare(b.name,"ko"));
+  }
+
+  function storeFavoriteTeam(key) {
+    const next = teamIndex.has(key) ? key : defaultFavoriteTeamKey;
+    favoriteTeamKey = teamIndex.has(next) ? next : teamIndex.keys().next().value;
+    let persisted = true;
+    try { localStorage.setItem(favoriteStorageKey,favoriteTeamKey); } catch { persisted = false; }
+    sortTeamsByFavorite();
+    state.teamKey = favoriteTeamKey;
+    state.teamQuery = "";
+    state.teamPage = 0;
+    return {team:teamIndex.get(favoriteTeamKey),persisted};
+  }
   const el = (tag, value, className) => {
     const node = document.createElement(tag);
     if (value !== undefined) node.textContent = value;
@@ -651,7 +686,7 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
         row.setAttribute("aria-pressed",String(item.key === selected));
         const teamName = el("span",undefined,"lb-team-name");
         teamName.append(el("span",item.name));
-        if (entry.key === favoriteTeamKey) teamName.append(el("span","관심팀","lb-favorite"));
+        if (item.key === favoriteTeamKey) teamName.append(el("span","관심팀","lb-favorite"));
         row.append(teamName);
         if (item.entries) {
           const year = Math.max(...[...item.entries,...item.scheduledEntries].map(record => record.cup.tournament.year));
@@ -682,6 +717,61 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
     box.append(label,rows,listing);
     paint();
     return box;
+  }
+
+  function renderHome() {
+    state.teamKey = favoriteTeamKey;
+    state.teamQuery = "";
+    state.teamPage = 0;
+    state.teamTab = "records";
+    renderTeams();
+  }
+
+  function renderSettings() {
+    const section = el("section",undefined,"lb-panel lb-stack lb-settings");
+    section.append(el("span","SETTINGS","lb-label"),el("h2","설정"));
+    const current = el("div",undefined,"lb-favorite-summary");
+    const currentName = el("strong",teamIndex.get(favoriteTeamKey)?.name || "영등포구");
+    current.append(el("span","현재 관심팀","lb-muted"),currentName);
+
+    const label = el("label");
+    label.append(el("span","관심팀 선택","lb-label"));
+    const select = el("select",undefined,"lb-settings-select");
+    select.setAttribute("aria-label","관심팀 선택");
+    for (const team of [...teams].sort((a,b) => a.name.localeCompare(b.name,"ko"))) {
+      const option = el("option",team.name);
+      option.value = team.key;
+      option.selected = team.key === favoriteTeamKey;
+      select.append(option);
+    }
+    label.append(select);
+
+    const feedback = el("p","관심팀 설정은 현재 브라우저에 저장됩니다.","lb-muted");
+    feedback.setAttribute("aria-live","polite");
+    const actions = el("div",undefined,"lb-settings-actions");
+    const save = button("관심팀 저장",() => updateFavorite(select.value));
+    const reset = button("영등포구로 초기화",() => {
+      select.value = defaultFavoriteTeamKey;
+      updateFavorite(defaultFavoriteTeamKey);
+    });
+    actions.append(save,reset);
+    select.addEventListener("change",() => { save.disabled = select.value === favoriteTeamKey; });
+    save.disabled = true;
+    reset.disabled = favoriteTeamKey === defaultFavoriteTeamKey;
+    section.append(current,label,actions,feedback);
+    page.replaceChildren(section);
+    saveRoute();
+
+    function updateFavorite(key) {
+      const result = storeFavoriteTeam(key);
+      currentName.textContent = result.team?.name || "영등포구";
+      select.value = favoriteTeamKey;
+      save.disabled = true;
+      reset.disabled = favoriteTeamKey === defaultFavoriteTeamKey;
+      feedback.textContent = result.persisted
+        ? currentName.textContent + "을(를) 관심팀으로 저장했습니다."
+        : "브라우저 저장을 사용할 수 없어 이번 화면에만 적용했습니다.";
+    }
   }
 
   function renderTeams() {
@@ -1068,7 +1158,9 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
 
   function renderView() {
     for (const item of root.querySelectorAll("[data-view]")) item.setAttribute("aria-pressed",String(item.dataset.view === state.view));
-    if (state.view === "teams") renderTeams();
+    if (state.view === "home") renderHome();
+    else if (state.view === "teams") renderTeams();
+    else if (state.view === "settings") renderSettings();
     else if (state.cupId) renderCup(cups.find(cup => cup.tournament.id === state.cupId));
     else renderCupDirectory();
   }
@@ -1088,7 +1180,7 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
       if (state.scheduleOrder === "age") params.set("scheduleOrder","age");
       if (state.teamQuery) params.set("q",state.teamQuery);
       if (state.teamPage) params.set("page",state.teamPage);
-    } else {
+    } else if (state.view === "cups") {
       params.set("age",state.cupAge);
       if (state.year) params.set("year",state.year);
       if (state.cupId) {
@@ -1108,11 +1200,12 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
 
   function restoreRoute() {
     const params = new URLSearchParams(location.hash.slice(1));
-    state.view = params.get("view") === "cups" ? "cups" : "teams";
+    const requestedView = params.get("view");
+    state.view = ["home","teams","cups","settings"].includes(requestedView) ? requestedView : "home";
     const age = ages.includes(params.get("age")) ? params.get("age") : ages[0];
     const year = Number(params.get("year"));
     if (state.view === "teams") {
-      state.teamKey = teamIndex.has(params.get("team")) ? params.get("team") : teams[0]?.key;
+      state.teamKey = teamIndex.has(params.get("team")) ? params.get("team") : favoriteTeamKey;
       state.teamYear = year || null;
       state.teamAge = age;
       state.teamTab = ["schedules","roster"].includes(params.get("tab")) ? params.get("tab")
@@ -1122,7 +1215,7 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
       state.teamQuery = params.get("q") || "";
       const pageNumber = Number(params.get("page"));
       state.teamPage = Number.isSafeInteger(pageNumber) && pageNumber > 0 ? pageNumber : 0;
-    } else {
+    } else if (state.view === "cups") {
       const cup = cups.find(cup => cup.tournament.id === params.get("cup"));
       state.cupId = cup?.tournament.id || null;
       state.cupAge = cup?.tournament.ageGroup || age;
@@ -1144,16 +1237,19 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
     home.addEventListener("click",event => {
       if (home.tagName === "A" && (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)) return;
       event.preventDefault();
-      Object.assign(state,initialState);
+      Object.assign(state,initialState,{view:"home",teamKey:favoriteTeamKey});
       renderView();
-      page.querySelector("#lb-team-detail h2")?.focus({preventScroll:true});
+      saveRoute();
+      page.querySelector("h2")?.focus({preventScroll:true});
       window.scrollTo(0,0);
     });
   }
   for (const tab of root.querySelectorAll("[data-view]")) {
     tab.addEventListener("click",() => {
       state.view = tab.dataset.view;
+      if (state.view === "teams" && !teamIndex.has(state.teamKey)) state.teamKey = favoriteTeamKey;
       renderView();
+      saveRoute();
     });
   }
   for (const event of ["popstate","hashchange"]) {
