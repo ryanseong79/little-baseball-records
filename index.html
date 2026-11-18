@@ -201,6 +201,16 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
   #lb-records #lb-team-detail { scroll-margin-top:12px; }
   #lb-records #lb-team-detail > .lb-line h2 { font-size:25px; }
   #lb-records .lb-team { padding:11px; }
+  #lb-records .lb-team-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; width:100%; }
+  #lb-records .lb-team-tabs button { width:100%; min-width:0; padding:8px 4px; font-size:11px; letter-spacing:-.04em; white-space:nowrap; }
+  #lb-records .lb-roster-table { min-width:280px; }
+  #lb-records .lb-roster-table th,#lb-records .lb-roster-table td { padding:11px 5px; }
+  #lb-records .lb-roster-table th { font-size:10px; white-space:nowrap; }
+  #lb-records .lb-roster-table th:nth-child(1),#lb-records .lb-roster-table td:nth-child(1) { width:38px; }
+  #lb-records .lb-roster-table th:nth-child(2),#lb-records .lb-roster-table td:nth-child(2) { min-width:58px; white-space:nowrap; word-break:keep-all; overflow-wrap:normal; }
+  #lb-records .lb-roster-table th:nth-child(3),#lb-records .lb-roster-table td:nth-child(3) { width:62px; }
+  #lb-records .lb-roster-eligibility { gap:3px; }
+  #lb-records .lb-roster-eligibility .lb-chip { padding:4px 7px; font-size:9px; }
   #lb-records input,#lb-records select { font-size:16px; }
   #lb-records .lb-cup-grid { grid-template-columns:minmax(0,1fr); }
   #lb-records .lb-cup-button { min-height:130px; padding:20px; }
@@ -731,9 +741,10 @@ body { margin:0; font-family:"Segoe UI","Malgun Gothic",sans-serif; -webkit-font
       const rosterEntry = rostersByTeam[team.key];
       const roster = rosterRecord(rosterEntry);
       const scheduledCount = team.scheduledEntries.filter(entry => entry.games.length).length;
-      const scheduleLabel = scheduledCount ? "대회 일정 · " + scheduledCount + "개 대회" : "대회 일정";
-      const rosterLabel = rosterEntry ? "선수 명단 · " + rosterEntry.players.length + "명" : "선수 명단";
-      const tabs = controls("팀 기록 보기",[["records","시즌 기록"],["schedules",scheduleLabel],["roster",rosterLabel]],state.teamTab,showTeamTab);
+      const scheduleLabel = scheduledCount ? "대회일정 (" + scheduledCount + "개)" : "대회일정";
+      const rosterLabel = rosterEntry ? "선수명단 (" + rosterEntry.players.length + "명)" : "선수명단";
+      const tabs = controls("팀 기록 보기",[["records","시즌기록"],["schedules",scheduleLabel],["roster",rosterLabel]],state.teamTab,showTeamTab);
+      tabs.classList.add("lb-team-tabs");
       const scheduleTab = tabs.children[1];
       const rosterTab = tabs.children[2];
       if (!rosterEntry) {
